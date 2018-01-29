@@ -24,12 +24,18 @@ namespace OdbcShell
 {
     class Program
     {
-        static void Main(string[] args)
+        private static string CreateQueryAllCommandText(string dataSource, string tableName)
         {
-            // The user must have full access to the registry key
-            // HKEY_LOCAL_MACHINE\SOFTWARE\ODBC
-            // General error Unable to open registry key 'Temporary (volatile)
-            var connectionString = Settings.Default.ConnectionString;
+            if (0 == string.Compare(@"EXCEL", dataSource, StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Format(@"SELECT * FROM [{0}];", tableName);
+            }
+
+            return string.Format(@"SELECT * FROM {0};", tableName);
+        }
+
+        private static void QueryDatabase(string connectionString)
+        {
             using (var connection = new OdbcConnection(connectionString))
             {
                 connection.Open();
@@ -41,7 +47,8 @@ namespace OdbcShell
                     if (0 == string.Compare(@"TABLE", tableType, StringComparison.OrdinalIgnoreCase))
                     {
                         var tableName = tableRow[@"TABLE_NAME"] as string;
-                        var selectCommand = new OdbcCommand(string.Format(@"SELECT * FROM [{0}];", tableName), connection);
+                        var queryAllCommandText = CreateQueryAllCommandText(connection.DataSource, tableName);
+                        var selectCommand = new OdbcCommand(queryAllCommandText, connection);
                         using (var reader = selectCommand.ExecuteReader())
                         {
                             if (reader.HasRows)
@@ -86,6 +93,22 @@ namespace OdbcShell
                         }
                     }
                 }
+            }
+        }
+
+        static void Main(string[] args)
+        {
+            // The user must have full access to the registry key
+            // HKEY_LOCAL_MACHINE\SOFTWARE\ODBC
+            // General error Unable to open registry key 'Temporary (volatile)
+            var connectionString = Settings.Default.ConnectionString;
+            QueryDatabase(connectionString);
+
+            // Try to find Postgres
+            connectionString = Environment.GetEnvironmentVariable(@"postgres.odbc");
+            if (!string.IsNullOrEmpty(connectionString))
+            {
+                QueryDatabase(connectionString);
             }
         }
     }
