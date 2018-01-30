@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 using MarkdownLog;
+using OdbcManagement;
 using OdbcShell.Properties;
 using System;
 using System.Collections.Generic;
@@ -24,6 +25,43 @@ namespace OdbcShell
 {
     class Program
     {
+        private static IEnumerable<string> GetAllConnectionStrings()
+        {
+            var odbcDrivers = ODBCManager.GetODBCDrivers();
+            if (null == odbcDrivers)
+            {
+                yield break;
+            }
+
+            var userDatasourceNames = ODBCManager.GetUserDSNList();
+            if (null == userDatasourceNames)
+            {
+                yield break;
+            }
+
+            foreach (var userDatasourceName in userDatasourceNames)
+            {
+                var driverPath = userDatasourceName.GetDSNDriverPath();
+                foreach (var odbcDriver in odbcDrivers)
+                {
+                    if (0 == string.Compare(driverPath, odbcDriver.GetDriverDLL(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        var properties = userDatasourceName.ToPropertyValues();
+                        if (properties.ContainsKey(@"Servername")
+                            && properties.ContainsKey(@"Database")
+                            && properties.ContainsKey(@"Port"))
+                        {
+                            var driverName = odbcDriver.GetODBCDriverName();
+                            var serverName = properties[@"Servername"];
+                            var port = properties[@"Port"];
+                            var databaseName = properties[@"Database"];
+                            yield return string.Format(@"Driver={0};Server={1};Port={2};Database={3};Uid={4};Pwd={5})", driverName, serverName, port, databaseName);
+                        }
+                    }
+                }
+            }
+        }
+
         private static string CreateQueryAllCommandText(string dataSource, string tableName)
         {
             if (0 == string.Compare(@"EXCEL", dataSource, StringComparison.OrdinalIgnoreCase))
@@ -49,7 +87,7 @@ namespace OdbcShell
                         var tableName = tableRow[@"TABLE_NAME"] as string;
                         var queryAllCommandText = CreateQueryAllCommandText(connection.DataSource, tableName);
                         var selectCommand = new OdbcCommand(queryAllCommandText, connection);
-                        using (var reader = selectCommand.ExecuteReader())
+                        using (var reader = selectCommand.ExecuteReader(CommandBehavior.SingleResult))
                         {
                             if (reader.HasRows)
                             {
@@ -109,6 +147,12 @@ namespace OdbcShell
             if (!string.IsNullOrEmpty(connectionString))
             {
                 QueryDatabase(connectionString);
+            }
+
+            // Try to find all
+            foreach (var registeredConnectionString in GetAllConnectionStrings())
+            {
+                QueryDatabase(registeredConnectionString);
             }
         }
     }
